@@ -7,9 +7,11 @@ import (
 	"encoding/binary"
 	"github.com/leesper/holmes"
 	"io"
+	"net"
 )
 
 const (
+	// HeartBeat is the default heart beat message number.
 	HeartBeat = 0
 )
 
@@ -41,10 +43,10 @@ var (
 	messageRegistry map[int32]handlerUnmarshaler
 )
 
-func init() {
-	messageRegistry = map[int32]handlerUnmarshaler{}
-	buf = new(bytes.Buffer)
-}
+//func init() {
+//	messageRegistry = map[int32]handlerUnmarshaler{}
+//	buf = new(bytes.Buffer)
+//}
 
 //注册消息，一个消息类型只能注册一次，由一个int32的消息ID来标识
 func Register(msgType int32, unmarshaler func([]byte) (Message, error), handler func(context.Context, WriteCloser)) {
@@ -85,6 +87,16 @@ type Message interface {
 // 心跳消息，维护一个时间戳
 type HeartBeatMessage struct {
 	Timestamp int64
+}
+
+// Serialize serializes HeartBeatMessage into bytes.
+func (hbm HeartBeatMessage) Serialize() ([]byte, error) {
+	buf.Reset()
+	err := binary.Write(buf, binary.LittleEndian, hbm.Timestamp)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 //实现messageNumber

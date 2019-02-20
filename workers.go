@@ -1,3 +1,7 @@
+// Worker pool is a pool of go-routines running for executing callbacks,
+// each client's message handler is permanently hashed into one specified
+// worker to execute, so it is in-order for each client's perspective.
+
 package myserverframework
 
 import "time"

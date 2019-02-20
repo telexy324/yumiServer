@@ -9,6 +9,7 @@ import (
 	"github.com/leesper/holmes"
 	"fmt"
 	"os"
+	"crypto/rand"
 )
 
 // 用于记录连入的conn
@@ -336,3 +337,60 @@ func (s *Server) Stop() {
 	os.Exit(0)
 }
 
+// Retrieve the extra data(i.e. net id), and then redispatch timeout callbacks
+// to corresponding client connection, this prevents one client from running
+// callbacks of other clients
+func (s *Server) timeOutLoop() {
+	defer s.wg.Done()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+
+		case timeout := <-s.timing.TimeOutChannel():  //包含回调函数及ctx
+			netID := timeout.Ctx.Value(netIDCtx).(int64)
+			if v, ok := s.conns.Load(netID); ok {
+				sc := v.(*ServerConn)
+				sc.timerCh <- timeout
+			} else {
+				holmes.Warnf("invalid client %d", netID)
+			}
+		}
+	}
+}
+
+// LoadTLSConfig returns a TLS configuration with the specified cert and key file.
+func LoadTLSConfig(certFile, keyFile string, isSkipVerify bool) (*tls.Config, error) {
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, err
+	}
+	config := &tls.Config{
+		Certificates:       []tls.Certificate{cert},
+		InsecureSkipVerify: isSkipVerify,
+		CipherSuites: []uint16{
+			tls.TLS_RSA_WITH_RC4_128_SHA,
+			tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
+			tls.TLS_RSA_WITH_AES_128_CBC_SHA,
+			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+			tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_RC4_128_SHA,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+			tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA,
+			tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+		},
+	}
+	now := time.Now()
+	config.Time = func() time.Time { return now }
+	config.Rand = rand.Reader
+	return config, nil
+}
